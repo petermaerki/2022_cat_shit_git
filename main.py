@@ -19,7 +19,6 @@ class LidarMiniTFPlus:
         self.distance_slow_m_increment_minus = 1E-4
         self.distance_m = 0.0
         self.detect_at_ticks_ms = None
-        self.timeout_ms = 5000
         self.signal_strength = None
         self.temperature_C = None
         self.detected_last = False
