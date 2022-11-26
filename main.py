@@ -22,44 +22,55 @@ class LidarMiniTFPlus:
         self.signal_strength = None
         self.temperature_C = None
         self.detected_last = False
-        self.missaligned = False
+        self.misaligned = False
 
     def try_to_get_new_measurement(self):
-        if self.missaligned:
+        """
+        Returns True when object detected
+        """
+        if self.misaligned:
             if self.uart.any() > 0:
                 self.uart.read(1) #trash one
-                self.missaligned = False
-                return False
-        temp = bytes()
-        if self.uart.any() > 8:
-            temp += self.uart.read(9)
-            sum = 0
-            for i in range(8):
-                sum += temp[i]
-            checksum = sum % 256
-            if not (temp[0] == 0x59 and temp[1] == 0x59 and temp[8] == checksum):
-                # missaligned, ignore and shift by one
-                self.missaligned = True
-                #print('missaligned')
-                return False
-            self.distance_m   = (temp[2] + temp[3] * 256 ) / 100.0   #Get distance value  
-            self.signal_strength    = temp[4] + temp[5] * 256            #Get Strength value  
-            self.temperature_C = (temp[6] + temp[7]* 256)/8-256      #Get IC temperature value  
-            if self.distance_m > self.distance_slow_m:
-                self.distance_slow_m += self.distance_slow_m_increment_plus
-            else:
-                self.distance_slow_m -= self.distance_slow_m_increment_minus
-            if self.distance_slow_m - self.distance_m < 0.1: # Es ist kein Gegenstand im Strahl
-                self.detected_last = False
-                return False
-            if self.detected_last == False: # Falls nicht bereits das letzte mal detektiert
-                self.detect_at_ticks_ms = time.ticks_ms()
-                self.detected_last = True
-                print('.')
-                return True
+                self.misaligned = False
+            return False
+
+        if self.uart.any() < 9:
+            return False
+
+        buf = self.uart.read(9)
+        
+        if buf[0] != 0x59 or buf[1] != 0x59:
+            # misaligned, ignore and shift by one
+            self.misaligned = True
+            return False
+
+        checksum = sum(buf[0:8]) % 256
+        if buf[8] != checksum:
+            # misaligned, ignore and shift by one
+            self.misaligned = True
+            return False
+        
+        self.distance_m   = (buf[2] + buf[3] * 256 ) / 100.0   #Get distance value  
+        self.signal_strength    = buf[4] + buf[5] * 256            #Get Strength value  
+        self.temperature_C = (buf[6] + buf[7]* 256)/8-256      #Get IC buferature value  
+        if self.distance_m > self.distance_slow_m:
+            self.distance_slow_m += self.distance_slow_m_increment_plus
+        else:
+            self.distance_slow_m -= self.distance_slow_m_increment_minus
+            
+        if self.distance_slow_m - self.distance_m < 0.1: # Es ist kein Gegenstand im Strahl
+            self.detected_last = False
+            return False
+
+        if self.detected_last == False: # Falls nicht bereits das letzte mal detektiert
+            self.detect_at_ticks_ms = time.ticks_ms()
+            self.detected_last = True
+            print('.')
+            return True
+        return False
                 
 
-    def do_extra_missalign(self): # for testing
+    def do_extra_misalign(self): # for testing
         while self.uart.read(1) == None: # none: timeout vom lesen
             time.sleep_us(1)
 
@@ -74,7 +85,7 @@ delaytime_us = 0
 while True:
     lidar_6_detected = lidar_6.try_to_get_new_measurement()
     lidar_1_detected = lidar_1.try_to_get_new_measurement()
-    if lidar_1.missaligned or lidar_6.missaligned:
+    if lidar_1.misaligned or lidar_6.misaligned:
         delaytime_us = 0
     time.sleep_us(delaytime_us)
     if time.ticks_diff(monitor_at_ms, time.ticks_ms()) <0:
