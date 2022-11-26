@@ -9,102 +9,68 @@ uart_6 = UART(6, 115200)
 uart_1 = UART(1, 115200)
 #uart_1.init(115200, bits=8, parity=None, stop=1)
 
-class Distance:
+
+class LidarMiniTFPlus:
     def __init__(self, uart):
         self.uart = uart
         self.uart.init(115200, bits=8, parity=None, stop=1,read_buf_len=64)
-        self.distance_slow_m = self.get_distance()
+        self.distance_slow_m = 0.0
         self.distance_slow_m_increment_plus = 1E-3
         self.distance_slow_m_increment_minus = 1E-4
-        self.alarm_start_ms = 0
+        self.distance_m = 0.0
+        self.detect_at_ticks_ms = None
         self.timeout_ms = 5000
+        self.signal_strength = None
+        self.temperature_C = None
+        self.detected_flag_intern = False
+        self.missaligned = False
 
-    def get_distance(self):
-        temp = bytes()
-        while True:
+    def try_to_get_new_measurement(self):
+        if self.missaligned:
             if self.uart.any() > 0:
-                temp += self.uart.read(9)
-                if temp[0] == 0x59 and temp[1] == 0x59 :
-                    distance   = (temp[2] + temp[3] * 256 ) / 100.0   #Get distance value  
-                    #strength    = temp[4] + temp[5] * 256            #Get Strength value  
-                    #temperature= (temp[6] + temp[7]* 256)/8-256      #Get IC temperature value  
-                    #print("%0.3f m strength %5d  %5d℃"%(distance,strength,temperature))
-                    return distance
-                else:
-                    # missalign
-                    #print('.', end = '')
-                    self.uart.read(1) #shift by one
-                    temp = bytes()
-
-
-    def do_measure(self):
-        while True:
-            self.distance_now_m = self.get_distance()
-            if self.distance_now_m > self.distance_slow_m:
+                self.uart.read(1) #trash one
+                self.missaligned = False
+                return False
+        temp = bytes()
+        if self.uart.any() > 8:
+            temp += self.uart.read(9)
+            if not (temp[0] == 0x59 and temp[1] == 0x59):
+                # missaligned, ignore and shift by one
+                self.missaligned = True
+                print('missaligned')
+                return False
+            self.distance_m   = (temp[2] + temp[3] * 256 ) / 100.0   #Get distance value  
+            self.signal_strength    = temp[4] + temp[5] * 256            #Get Strength value  
+            self.temperature_C = (temp[6] + temp[7]* 256)/8-256      #Get IC temperature value  
+            if self.distance_m > self.distance_slow_m:
                 self.distance_slow_m += self.distance_slow_m_increment_plus
             else:
                 self.distance_slow_m -= self.distance_slow_m_increment_minus
-            #print('distance_now_m %2.3f m, distance_slow_m %2.3f m, difference % 2.3f m,counter %d, ' % (self.distance_now_m, self.distance_slow_m, self.distance_now_m - self.distance_slow_m, self.counter) )
-            alarm = self.distance_slow_m - self.distance_now_m > 0.1
-            if alarm and self.alarm_start_ms == 0 :
-                self.alarm_start_ms = time.ticks_ms()
-            if time.ticks_diff(time.ticks_ms(), self.alarm_start_ms) > self.timeout_ms:
-                self.alarm_start_ms = 0
-            return alarm
-    
-        
-lidar_6 = Distance(uart_6)
-lidar_1 = Distance(uart_1)
+            if self.distance_slow_m - self.distance_m > 0.1: # Es ist ein Gegenstand im Strahl
+                if not self.detected_flag_intern: # Falls nicht bereits das letzte mal aufgetreten
+                    self.detect_at_ticks_ms = time.ticks_ms()
+                    self.detected_flag_intern = True
+                    return True
+                else:
+                    self.detected_flag_intern = False
+                    return False
 
-time_next_print_ms = time.ticks_ms()
+    def do_extra_missalign(self): # for testing
+        while self.uart.read(1) == None: # none: timeout vom lesen
+            time.sleep_us(1)
 
-alarm_6_start_ms = 0
-alarm_1_start_ms = 0
+print('hugo')
 
+lidar_6 = LidarMiniTFPlus(uart_6)
+lidar_1 = LidarMiniTFPlus(uart_1)
+
+monitor_at_ms = time.ticks_ms()
 while True:
-    lidar_6.do_measure()
-    lidar_1.do_measure()
-    if time.ticks_diff(time.ticks_ms(), time_next_print_ms) > 0:
-        time_next_print_ms = time.ticks_add(time_next_print_ms, 1000)
-        if lidar_6.alarm_start_ms or lidar_1.alarm_start_ms:
-            print (lidar_6.alarm_start_ms, lidar_1.alarm_start_ms)
-        if lidar_6.alarm_start_ms and lidar_1.alarm_start_ms:
-            print (time.ticks_diff(lidar_6.alarm_start_ms, lidar_1.alarm_start_ms))
-    
-    
-"""
+    lidar_6.try_to_get_new_measurement()
+    lidar_1.try_to_get_new_measurement()
+    if time.ticks_diff(monitor_at_ms, time.ticks_ms()) <0:
+        monitor_at_ms = time.ticks_add(monitor_at_ms, 1000)
+        print(lidar_1.distance_m, lidar_6.distance_m,)
 
-def get_distance():
-    temp = bytes()
-    while True:
-        if uart.any() > 0:
-            temp += uart.read(9)
-            if temp[0] == 0x59 and temp[1] == 0x59 :
-                distance   = (temp[2] + temp[3] * 256 ) / 100.0   #Get distance value  
-                #strength    = temp[4] + temp[5] * 256            #Get Strength value  
-                #temperature= (temp[6] + temp[7]* 256)/8-256      #Get IC temperature value  
-                #print("%0.3f m strength %5d  %5d℃"%(distance,strength,temperature))
-                return distance
-            else:
-                print('seriell Muell empfangen %s', temp)
 
-distance_slow_m = get_distance()
-distance_slow_m_increment_plus = 1E-3
-distance_slow_m_increment_minus = 1E-4
-counter = 0
-while True:
-    distance_now_m = get_distance()
-    if distance_now_m > distance_slow_m:
-        distance_slow_m += distance_slow_m_increment_plus
-    else:
-        distance_slow_m -= distance_slow_m_increment_minus
-    print('distance_now_m %2.3f m, distance_slow_m %2.3f m, difference % 2.3f m,counter %d, ' % (distance_now_m, distance_slow_m, distance_now_m - distance_slow_m, counter) )
-    counter += 1
-    alarm = distance_slow_m - distance_now_m > 0.1
-    if alarm:
-        print('alarm')
-        led_alarm.on()
-    else:
-        led_alarm.off()
-    
-"""
+
