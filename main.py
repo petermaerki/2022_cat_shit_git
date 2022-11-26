@@ -88,8 +88,6 @@ class LidarMiniTFPlus:
     def get_status(self):
         delay_ms = time.ticks_diff(time.ticks_ms(), self.detected_ticks_ms)
         return "%s: %0.2fm %6dms" % (self.name, self.distance_m, delay_ms)
-#         delay_ms = time.ticks_diff(self.detected_ticks_ms, self.start_ticks_ms)
-#         return "%s: %0.2fm %dms" % (self.name, self.distance_m, delay_ms)
 
 print('hugo')
 
