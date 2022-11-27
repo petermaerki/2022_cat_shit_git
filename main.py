@@ -103,9 +103,34 @@ lidars = (lidar_A3, lidar_B1, lidar_C6)
 long_ago_forget_ms = 5000
 
 def decision(name):
-    # cat enter, shoot
     if name == lidar_C6.name:
-        print (lidar_C6.get_delay_ms())
+        if lidar_A3.get_delay_ms() < long_ago_forget_ms:
+            print('A was detected, car')
+            return
+        if lidar_B1.get_delay_ms() > long_ago_forget_ms:
+            print('B was not detected bevore, something exit.')
+            return
+        print('Cat entering, shooting')
+    if name == lidar_B1.name:
+        if lidar_C6.get_delay_ms() < long_ago_forget_ms:
+            print('C was detected bevore, something exit.')
+            return
+        if lidar_A3.get_delay_ms() < long_ago_forget_ms:
+            print('A was detected bevore. Car enter.')
+            return
+        print('Cat at Lidar B?')
+    if name == lidar_A3.name:
+        if lidar_C6.get_delay_ms() < long_ago_forget_ms and lidar_B1.get_delay_ms() < long_ago_forget_ms and lidar_C6.get_delay_ms() > lidar_B1.get_delay_ms():
+            print('Car exit')
+            return
+        if lidar_C6.get_delay_ms() > long_ago_forget_ms and lidar_B1.get_delay_ms() > long_ago_forget_ms:
+            print('Car at lidar A.')
+            return
+
+        if lidar_C6.get_delay_ms() > long_ago_forget_ms and lidar_B1.get_delay_ms() < long_ago_forget_ms:
+            print('Strange, B, then A but not C. Should not happen.')
+            return
+        print('Assert, should never get here')
 
 while True:
     for lidar in lidars:
