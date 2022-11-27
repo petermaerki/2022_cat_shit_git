@@ -4,10 +4,8 @@ import time
 led_alarm = pyb.LED(1)
 
 uart_6 = UART(6, 115200)
-#uart_6.init(115200, bits=8, parity=None, stop=1)
-
 uart_1 = UART(1, 115200)
-#uart_1.init(115200, bits=8, parity=None, stop=1)
+uart_3 = UART(3, 115200)
 
 
 class LidarMiniTFPlus:
@@ -31,6 +29,8 @@ class LidarMiniTFPlus:
         Process input data.
         Does nothing if misaligned or not sufficient data.
         """
+        #if self.name == 'lidar_A3': # todo: remove when Lidar A is available
+        #    return
         if self._misaligned:
             if self._uart.any() == 0:
                 return
@@ -83,19 +83,29 @@ class LidarMiniTFPlus:
         return tmp
 
     def get_status(self):
+        return "%s: %0.2fm (%0.2fm) %6dms" % (self.name, self.distance_m, self.distance_slow_m, self.get_delay_ms())
+
+    def get_delay_ms(self):
         delay_ms = time.ticks_diff(time.ticks_ms(), self.detected_ticks_ms)
-        return "%s: %0.2fm (%0.2fm) %6dms" % (self.name, self.distance_m, self.distance_slow_m, delay_ms)
+        return delay_ms
 
-
-lidar_C6 = LidarMiniTFPlus(uart_6, "lidar_C6")
+lidar_A3 = LidarMiniTFPlus(uart_3, "lidar_A3")
 lidar_B1 = LidarMiniTFPlus(uart_1, "lidar_B1")
+lidar_C6 = LidarMiniTFPlus(uart_6, "lidar_C6")
 
 monitor_at_ms = time.ticks_ms() + 50
 
 delaytime_us = 0
 start_ticks_ms = time.ticks_ms()
 
-lidars = (lidar_C6, lidar_B1)
+lidars = (lidar_A3, lidar_B1, lidar_C6)
+
+long_ago_forget_ms = 5000
+
+def decision(name):
+    # cat enter, shoot
+    if name == lidar_C6.name:
+        print (lidar_C6.get_delay_ms())
 
 while True:
     for lidar in lidars:
@@ -104,6 +114,7 @@ while True:
         if lidar.edge_detected():
             name = lidar.name
             print('detected: %s' % name)
+            decision(name)
     
         if time.ticks_diff(monitor_at_ms, time.ticks_ms()) < 0:
             monitor_at_ms = time.ticks_add(monitor_at_ms, 1000)
