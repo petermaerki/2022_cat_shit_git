@@ -16,16 +16,15 @@ class LidarMiniTFPlus:
         self._misaligned = False
         self._uart = uart
         self._uart.init(115200, bits=8, parity=None, stop=1,read_buf_len=64)
-        self._distance_slow_m = 0.0
+        self.distance_slow_m = 0.0
         self._distance_slow_m_increment_plus = 1E-3
         self._distance_slow_m_increment_minus = 1E-4
         self.distance_m = 0.0
         self.signal_strength = None
         self.temperature_C = None
         self.detected = False
-        self.detected_edge_processed = True
+        self.detected_edge_processed = False
         self.detected_ticks_ms = 0
-        self._detected_edge = False
 
     def process_input_data(self):
         """
@@ -56,17 +55,19 @@ class LidarMiniTFPlus:
         
         self.distance_m   = (buf[2] + buf[3] * 256 ) / 100.0   #Get distance value  
         self.signal_strength    = buf[4] + buf[5] * 256            #Get Strength value  
-        self.temperature_C = (buf[6] + buf[7]* 256)/8-256      #Get IC buferature value  
-        if self.distance_m > self._distance_slow_m:
-            self._distance_slow_m += self._distance_slow_m_increment_plus
+        self.temperature_C = (buf[6] + buf[7]* 256)/8-256      #Get IC buferature value
+        if self.distance_slow_m < 0.1: # start up
+            self.distance_slow_m = self.distance_m
+        if self.distance_m > self.distance_slow_m:
+            self.distance_slow_m += self._distance_slow_m_increment_plus
         else:
-            self._distance_slow_m -= self._distance_slow_m_increment_minus
+            self.distance_slow_m -= self._distance_slow_m_increment_minus
             
-        detected_actual = self._distance_slow_m - self.distance_m < 0.1
+        detected_actual = self.distance_slow_m - self.distance_m > 0.1 #and self.distance_slow_m > 0.3
         deteced_edge = detected_actual != self.detected
         self.detected = detected_actual
 
-        if deteced_edge: # Falls nicht bereits das letzte mal detektiert
+        if deteced_edge:
             if detected_actual:
                 self.detected_edge_processed = True
                 self.detected_ticks_ms = time.ticks_ms()
@@ -81,47 +82,43 @@ class LidarMiniTFPlus:
         self.detected_edge_processed = False
         return tmp
 
-    def do_extra_misalign(self): # for testing
-        while self._uart.read(1) == None: # none: timeout vom lesen
-            time.sleep_us(1)
-
     def get_status(self):
         delay_ms = time.ticks_diff(time.ticks_ms(), self.detected_ticks_ms)
-        return "%s: %0.2fm %6dms" % (self.name, self.distance_m, delay_ms)
+        return "%s: %0.2fm (%0.2fm) %6dms" % (self.name, self.distance_m, self.distance_slow_m, delay_ms)
 
-print('hugo')
 
-lidar_6 = LidarMiniTFPlus(uart_6, "lidar_6")
-lidar_1 = LidarMiniTFPlus(uart_1, "lidar_1")
+lidar_C6 = LidarMiniTFPlus(uart_6, "lidar_C6")
+lidar_B1 = LidarMiniTFPlus(uart_1, "lidar_B1")
 
-monitor_at_ms = time.ticks_ms()
+monitor_at_ms = time.ticks_ms() + 50
 
 delaytime_us = 0
 start_ticks_ms = time.ticks_ms()
 
-lidars = (lidar_6, lidar_1)
+lidars = (lidar_C6, lidar_B1)
 
 while True:
     for lidar in lidars:
         lidar.process_input_data()
     
         if lidar.edge_detected():
-            print(lidar.name)
+            name = lidar.name
+            print('detected: %s' % name)
     
-        if time.ticks_diff(monitor_at_ms, time.ticks_ms()) <0:
+        if time.ticks_diff(monitor_at_ms, time.ticks_ms()) < 0:
             monitor_at_ms = time.ticks_add(monitor_at_ms, 1000)
             status = ", ".join(map(LidarMiniTFPlus.get_status, lidars))
             print(status)
 # 
 #     if False:
-#         lidar_6_detected = lidar_6.try_to_get_new_measurement()
-#         lidar_1_detected = lidar_1.try_to_get_new_measurement()
-#         if lidar_1.misaligned or lidar_6.misaligned:
+#         lidar_C6_detected = lidar_C6.try_to_get_new_measurement()
+#         lidar_B1_detected = lidar_B1.try_to_get_new_measurement()
+#         if lidar_B1.misaligned or lidar_C6.misaligned:
 #             delaytime_us = 0
 #         time.sleep_us(delaytime_us)
 #         if time.ticks_diff(monitor_at_ms, time.ticks_ms()) <0:
 #             monitor_at_ms = time.ticks_add(monitor_at_ms, 1000)
-#             print(lidar_1.distance_m, lidar_1.detected_ticks_ms, lidar_6.distance_m,lidar_6.detected_ticks_ms, 'delaytime_us %d'%delaytime_us)
+#             print(lidar_B1.distance_m, lidar_B1.detected_ticks_ms, lidar_C6.distance_m,lidar_C6.detected_ticks_ms, 'delaytime_us %d'%delaytime_us)
 #             delaytime_us += 1000
 
 
