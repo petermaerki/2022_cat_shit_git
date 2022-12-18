@@ -1,4 +1,4 @@
-from pyb import UART
+from pyb import UART, Pin
 import time
 
 led_alarm = pyb.LED(1)
@@ -7,6 +7,12 @@ uart_6 = UART(6, 115200)
 uart_1 = UART(1, 115200)
 uart_3 = UART(3, 115200)
 
+LED_hell = pyb.Pin('Y7', pyb.Pin.OUT_PP)
+LED_hell.value(0)
+pumpe = pyb.Pin('Y6', pyb.Pin.OUT_PP)
+pumpe.value(0)
+
+led_until_ms = time.ticks_ms()
 
 class LidarMiniTFPlus:
     def __init__(self, uart, name):
@@ -97,9 +103,19 @@ lidars = (lidar_A, lidar_B, lidar_C)
 
 long_ago_forget_ms = 5000
 
+def spray_water():
+    pumpe.value(1)
+    time.sleep_ms(1000)
+    pumpe.value(0)
+
+def led_impulse(duration_ms = 300):
+    global led_until_ms
+    led_until_ms = time.ticks_add(time.ticks_ms(), duration_ms)
+    
 def decision_A():
     if not lidar_A.edge_detected():
         return
+    led_impulse()
     print('A detected')
     if lidar_C.get_delay_ms() < long_ago_forget_ms and lidar_B.get_delay_ms() < long_ago_forget_ms and lidar_C.get_delay_ms() > lidar_B.get_delay_ms():
         print('Car exit')
@@ -115,6 +131,7 @@ def decision_A():
 def decision_B():
     if not lidar_B.edge_detected():
         return
+    led_impulse()
     print('B detected')
     if lidar_C.get_delay_ms() < long_ago_forget_ms:
         print('C was detected before, something exit.')
@@ -127,6 +144,7 @@ def decision_B():
 def decision_C():
     if not lidar_C.edge_detected():
         return
+    led_impulse()
     print('C detected')
     if lidar_A.get_delay_ms() < long_ago_forget_ms:
         print('A was detected => car entering')
@@ -135,6 +153,8 @@ def decision_C():
         print('B was not detected before => something exit.')
         return
     print('=> Cat entering, spray water')
+    spray_water()
+
 
 while True:
     for lidar in lidars:
@@ -148,6 +168,8 @@ while True:
         monitor_at_ms = time.ticks_add(monitor_at_ms, 1000)
         status = ", ".join(map(LidarMiniTFPlus.get_status, lidars))
         print(status)
+    led = time.ticks_diff(led_until_ms, time.ticks_ms()) > 0
+    LED_hell.value(led)
 
 
 
